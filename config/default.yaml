@@ -1,0 +1,189 @@
+# Default configuration for Predictive Trading Signals
+# Override with custom config using --config flag
+
+data:
+  # Data source configuration
+  symbols: ["SPY"]  # Track A: SPY only (no survivorship bias)
+  # symbols: ["SPY", "AAPL", "MSFT", "GOOGL", "AMZN"]  # Track B: Multi-asset (survivorship bias)
+
+  # Date ranges
+  start_date: "2010-01-01"
+  end_date: "2024-12-31"
+
+  # Data source options
+  source: "yfinance"  # Options: "yfinance", "csv"
+  csv_dir: "data/raw"
+
+  # Database settings
+  db_path: "data/trading.db"
+
+  # Data validation
+  min_trading_days: 252  # Minimum trading days required per symbol
+
+features:
+  # Technical indicators configuration
+  sma_periods: [5, 10, 20]
+  ema_periods: [5, 10, 20]
+  rsi_period: 14
+  macd_params:
+    fast: 12
+    slow: 26
+    signal: 9
+  stoch_k_period: 14
+  atr_period: 14
+
+  # Rolling statistics
+  returns_periods: [1, 5]
+  volatility_period: 20
+  zscore_period: 20
+  momentum_period: 10
+  stats_periods:
+    skew: 60
+    kurtosis: 60
+
+  # Feature selection
+  drop_correlated: true
+  correlation_threshold: 0.95
+
+labeling:
+  # Label definition
+  target_type: "binary"  # "binary" for Up/Down classification
+  lookahead_days: 1  # Predict next day movement
+
+  # Label validation
+  min_return_threshold: 0.0  # Minimum return to consider as "Up"
+
+modeling:
+  # Train/validation/test splits
+  train_end: "2019-12-31"
+  validation_start: "2015-01-01"
+  test_start: "2020-01-01"
+
+  # Cross-validation
+  cv_method: "TimeSeriesSplit"
+  cv_folds: 5
+  cv_gap: 1  # Days between train and validation
+
+  # Model parameters
+  models:
+    logreg:
+      class_weight: "balanced"
+      C: 1.0
+      max_iter: 1000
+      random_state: 42
+
+    rf:
+      n_estimators: 100
+      max_depth: 10
+      min_samples_split: 10
+      min_samples_leaf: 5
+      class_weight: "balanced"
+      random_state: 42
+      n_jobs: -1
+
+  # Feature preprocessing
+  scale_features: true
+  handle_missing: "drop"  # Options: "drop", "fill", "interpolate"
+
+  # Model persistence
+  model_dir: "models"
+  save_predictions: true
+
+backtesting:
+  # Signal generation
+  threshold_long: 0.55   # Probability threshold for long signals
+  threshold_short: 0.45  # Probability threshold for short signals
+  long_only: true        # Disable short selling
+
+  # Transaction costs and constraints
+  transaction_cost: 0.0005  # 5 basis points per trade
+  slippage: 0.0001          # 1 basis point slippage
+
+  # Position sizing
+  position_size: 1.0  # Fraction of capital per position
+  max_positions: 1    # Maximum concurrent positions
+
+  # Risk management
+  max_drawdown_stop: null  # Stop trading if drawdown exceeds (e.g., 0.15 for 15%)
+  max_leverage: 1.0
+
+  # Execution timing
+  signal_time: "close"     # When signal is generated: "close"
+  execution_time: "open"   # When position is taken: "open" of next day
+
+  # Benchmark
+  benchmark_symbol: "SPY"
+
+reporting:
+  # Report generation
+  output_dir: "reports"
+  report_name: "trading_report.html"
+
+  # Metrics to include
+  metrics:
+    - "total_return"
+    - "cagr"
+    - "sharpe_ratio"
+    - "max_drawdown"
+    - "calmar_ratio"
+    - "hit_rate"
+    - "avg_win"
+    - "avg_loss"
+    - "win_loss_ratio"
+    - "turnover"
+    - "exposure"
+
+  # Risk-free rate for Sharpe calculation
+  risk_free_rate: 0.0  # Annual risk-free rate (0 = no risk-free rate)
+
+  # Plotting
+  plot_equity_curve: true
+  plot_drawdown: true
+  plot_returns_distribution: true
+  plot_feature_importance: true
+  plot_threshold_sweep: true
+
+  # Table formats
+  round_decimals: 4
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/trading_pipeline.log"
+  console: true
+
+# System settings
+system:
+  random_seed: 42
+  n_jobs: -1  # Use all available cores
+  memory_limit: null  # Memory limit in GB (null = no limit)
+
+  # Parallel processing
+  parallel_backend: "threading"  # "threading", "multiprocessing"
+
+  # Caching
+  cache_features: true
+  cache_dir: "data/cache"
+
+# Validation and testing
+validation:
+  # Data quality checks
+  check_missing_data: true
+  check_future_leakage: true
+  check_data_alignment: true
+
+  # Model validation
+  min_test_accuracy: 0.51  # Minimum acceptable test accuracy
+  max_overfitting_ratio: 2.0  # Max ratio of train/validation performance
+
+  # Backtest validation
+  min_sharpe_ratio: 0.0  # Minimum acceptable Sharpe ratio
+  max_drawdown_threshold: 0.50  # Maximum acceptable drawdown
+
+# Development and debugging
+development:
+  debug_mode: false
+  save_intermediate: false  # Save intermediate results for debugging
+  profile_performance: false
+  verbose_logging: false
