@@ -1,5 +1,5 @@
 """
-Time series cross-validation module for predictive trading signals.
+Time series cross-validation module for predictive trading signals which will be used further.
 
 This module provides time-series aware data splitting functionality that prevents
 lookahead bias in model training and evaluation. It implements expanding window

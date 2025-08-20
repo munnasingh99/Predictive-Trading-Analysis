@@ -1,5 +1,5 @@
 """
-Label generation module for creating target variables.
+Label generation module for creating target variables more suitable for machine learning models.
 
 This module generates binary classification labels for predicting next-day
 price movements. Key principles:

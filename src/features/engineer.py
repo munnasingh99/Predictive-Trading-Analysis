@@ -1,5 +1,5 @@
 """
-Feature engineering module for technical indicators.
+Feature engineering module for technical indicators for Machine Learning models.
 
 This module computes technical indicators from OHLCV data with strict
 no-lookahead bias enforcement. All features at time t use only data
