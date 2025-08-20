@@ -67,18 +67,22 @@ class LabelGenerator:
 
         all_labels = []
 
+        # Allow dynamic updates to configuration after initialization
+        lookahead_days = self.labeling_config.get('lookahead_days', self.lookahead_days)
+        threshold = self.labeling_config.get('min_return_threshold', self.min_return_threshold)
+
         # Process each symbol separately
         for symbol in data['symbol'].unique():
             logger.debug(f"Generating labels for {symbol}")
 
             symbol_data = data[data['symbol'] == symbol].copy().reset_index(drop=True)
 
-            if len(symbol_data) < self.lookahead_days + 1:
+            if len(symbol_data) < lookahead_days + 1:
                 logger.warning(f"Insufficient data for {symbol}: {len(symbol_data)} rows")
                 continue
 
             # Calculate future returns
-            symbol_data['future_price'] = symbol_data['adj_close'].shift(-self.lookahead_days)
+            symbol_data['future_price'] = symbol_data['adj_close'].shift(-lookahead_days)
 
             # Calculate return from current price to future price
             symbol_data['future_return'] = (
@@ -87,10 +91,10 @@ class LabelGenerator:
 
             # Generate binary labels
             # y_next = 1 if future_return > threshold, 0 otherwise
-            symbol_data['y_next'] = (symbol_data['future_return'] > self.min_return_threshold).astype(int)
+            symbol_data['y_next'] = (symbol_data['future_return'] > threshold).astype(int)
 
             # Remove the last lookahead_days rows as they don't have valid labels
-            symbol_data = symbol_data.iloc[:-self.lookahead_days].copy()
+            symbol_data = symbol_data.iloc[:-lookahead_days].copy()
 
             # Select only required columns for labels table
             label_data = symbol_data[['symbol', 'date', 'y_next']].copy()
@@ -134,17 +138,22 @@ class LabelGenerator:
 
         if len(label_counts) < 2:
             logger.warning(f"Only one class found in labels for {symbol}: {label_counts.to_dict()}")
-            return False
+            logger.debug(f"Label distribution for {symbol}: {label_counts.to_dict()}")
+            return True
 
         # Check for extreme class imbalance (less than 5% minority class)
         minority_pct = label_counts.min() / total_labels
         if minority_pct < 0.05:
-            logger.warning(f"Extreme class imbalance for {symbol}: {label_counts.to_dict()} "
-                          f"({minority_pct:.1%} minority class)")
+            logger.warning(
+                f"Extreme class imbalance for {symbol}: {label_counts.to_dict()} "
+                f"({minority_pct:.1%} minority class)"
+            )
 
-        # Log label statistics
-        logger.debug(f"Label distribution for {symbol}: {label_counts.to_dict()} "
-                    f"({label_counts[1]/total_labels:.1%} positive)")
+        pos_pct = label_counts.get(1, 0) / total_labels
+        logger.debug(
+            f"Label distribution for {symbol}: {label_counts.to_dict()} "
+            f"({pos_pct:.1%} positive)"
+        )
 
         return True
 
