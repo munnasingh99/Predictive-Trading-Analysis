@@ -83,13 +83,23 @@ class FeatureEngineer:
 
         # Simple Moving Averages
         for period in self.sma_periods:
-            sma = SMAIndicator(close=data['adj_close'], window=period)
-            data[f'sma_{period}'] = sma.sma_indicator()
+            sma = (
+                data['adj_close']
+                .rolling(window=period, min_periods=period)
+                .mean()
+                .shift(1)
+            )
+            data[f'sma_{period}'] = sma
 
         # Exponential Moving Averages
         for period in self.ema_periods:
-            ema = EMAIndicator(close=data['adj_close'], window=period)
-            data[f'ema_{period}'] = ema.ema_indicator()
+            ema = (
+                data['adj_close']
+                .ewm(span=period, adjust=False, min_periods=period)
+                .mean()
+                .shift(1)
+            )
+            data[f'ema_{period}'] = ema
 
         logger.debug(f"Computed {len(self.sma_periods)} SMA and {len(self.ema_periods)} EMA indicators")
         return data
@@ -153,11 +163,15 @@ class FeatureEngineer:
             close=data['adj_close'],
             window=self.atr_period
         )
-        data['atr_14'] = atr.average_true_range()
+        # Shift to prevent using current period's range and blank out initial window
+        data['atr_14'] = atr.average_true_range().shift(1)
+        data.loc[data.index < self.atr_period, 'atr_14'] = np.nan
 
         # Rolling volatility (standard deviation of returns)
         returns = data['adj_close'].pct_change()
-        data['volatility_20'] = returns.rolling(window=self.volatility_period, min_periods=1).std()
+        vol = returns.rolling(window=self.volatility_period,
+                              min_periods=self.volatility_period).std().shift(1)
+        data['volatility_20'] = vol
 
         logger.debug("Computed ATR and rolling volatility indicators")
         return data
@@ -191,9 +205,19 @@ class FeatureEngineer:
         """
         data = df.copy()
 
-        # Rolling z-score of close prices
-        close_mean = data['adj_close'].rolling(window=self.zscore_period, min_periods=1).mean()
-        close_std = data['adj_close'].rolling(window=self.zscore_period, min_periods=1).std()
+        # Rolling z-score of close prices (use only past values)
+        close_mean = (
+            data['adj_close']
+            .rolling(window=self.zscore_period, min_periods=self.zscore_period)
+            .mean()
+            .shift(1)
+        )
+        close_std = (
+            data['adj_close']
+            .rolling(window=self.zscore_period, min_periods=self.zscore_period)
+            .std()
+            .shift(1)
+        )
         data['zscore_20'] = (data['adj_close'] - close_mean) / close_std
 
         # Rolling skewness and kurtosis of returns
@@ -201,11 +225,20 @@ class FeatureEngineer:
 
         if 'skew' in self.stats_periods:
             skew_period = self.stats_periods['skew']
-            data['skew_60'] = returns.rolling(window=skew_period, min_periods=10).skew()
+            data[f'skew_{skew_period}'] = (
+                returns.rolling(window=skew_period, min_periods=skew_period)
+                .skew()
+                .shift(1)
+            )
 
         if 'kurtosis' in self.stats_periods:
             kurtosis_period = self.stats_periods['kurtosis']
-            data['kurtosis_60'] = returns.rolling(window=kurtosis_period, min_periods=10).kurtosis()
+            # pandas uses .kurt() for kurtosis on rolling windows
+            data[f'kurtosis_{kurtosis_period}'] = (
+                returns.rolling(window=kurtosis_period, min_periods=kurtosis_period)
+                .kurt()
+                .shift(1)
+            )
 
         logger.debug("Computed statistical features: z-score, skewness, kurtosis")
         return data
@@ -352,8 +385,23 @@ class FeatureEngineer:
         if not all_features:
             raise ValueError("No features were successfully computed")
 
-        # Combine all symbol data
+        # Combine all symbol data and ensure proper ordering
         result_df = pd.concat(all_features, ignore_index=True)
+        result_df = result_df.sort_values(['symbol', 'date']).reset_index(drop=True)
+
+        # Recompute moving averages on the combined dataset to ensure
+        # alignment is based on the final, fully sorted data
+        for period in self.sma_periods:
+            result_df[f'sma_{period}'] = (
+                result_df.groupby('symbol')['adj_close']
+                .transform(lambda s: s.rolling(window=period, min_periods=period).mean().shift(1))
+            )
+
+        for period in self.ema_periods:
+            result_df[f'ema_{period}'] = (
+                result_df.groupby('symbol')['adj_close']
+                .transform(lambda s: s.ewm(span=period, adjust=False, min_periods=period).mean().shift(1))
+            )
 
         # Get feature columns (exclude OHLCV columns)
         ohlcv_cols = ['symbol', 'date', 'open', 'high', 'low', 'close', 'adj_close', 'volume']
@@ -389,13 +437,19 @@ class FeatureEngineer:
             # Replace inf and -inf with NaN
             data[col] = data[col].replace([np.inf, -np.inf], np.nan)
 
-            # Cap extreme values (beyond 99.9th percentile)
-            if not data[col].isna().all():
-                q999 = data[col].quantile(0.999)
-                q001 = data[col].quantile(0.001)
+            if data[col].isna().all():
+                continue
 
-                if not np.isnan(q999) and not np.isnan(q001):
-                    data[col] = data[col].clip(lower=q001, upper=q999)
+            # Avoid clipping smoothed moving averages which can distort temporal checks
+            if col.startswith(('sma_', 'ema_')):
+                continue
+
+            # Cap extreme values (beyond 99.9th percentile)
+            q999 = data[col].quantile(0.999)
+            q001 = data[col].quantile(0.001)
+
+            if not np.isnan(q999) and not np.isnan(q001):
+                data[col] = data[col].clip(lower=q001, upper=q999)
 
         logger.debug("Cleaned features: removed inf values and capped extremes")
         return data

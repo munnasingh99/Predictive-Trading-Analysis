@@ -219,9 +219,10 @@ class TimeSeriesSplitter:
             min_val_date = val_dates.min()
 
             if max_train_date >= min_val_date - timedelta(days=self.gap_days):
-                error_msg = (f"Lookahead bias detected in fold {fold}: "
-                           f"max train date ({max_train_date}) >= "
-                           f"min val date - gap ({min_val_date - timedelta(days=self.gap_days)})")
+                # use lowercase message so tests can match case-sensitively
+                error_msg = (f"lookahead bias detected in fold {fold}: "
+                             f"max train date ({max_train_date}) >= "
+                             f"min val date - gap ({min_val_date - timedelta(days=self.gap_days)})")
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
